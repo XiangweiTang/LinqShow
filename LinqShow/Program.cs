@@ -118,9 +118,9 @@ namespace LinqShow
             // The longest string in StrCollection0.
             // "defgh"
             string maxLengthStr = StrCollection0.Aggregate((x, y) => x.Length > y.Length ? x : y);
-            // The longest string length, while length at least 10.
-            // 10 (since no string in StrCollection0 has a length larger than 10.
-            int longestLengthAtLeast10 = StrCollection0.Aggregate(10, (x, y) => x >= y.Length ? x : y.Length);
+            // The longest string length, while length at least 0.
+            // 5
+            int longestLengthAtLeast10 = StrCollection0.Aggregate(0, (x, y) => x >= y.Length ? x : y.Length);
             // Same as above, but the result is output in string format.
             string longestLengthAtLeast10Str = StrCollection0.Aggregate(10, (x, y) => x >= y.Length ? x : y.Length, x => x.ToString());
         }
@@ -134,9 +134,9 @@ namespace LinqShow
             // false
             bool allIntsAreGreaterThan5 = IntCollection0.All(x => x > 5);
 
-            // Testify if ANY of the strings in StrCollection0 is longer than 10.
-            // false
-            bool anyStringAreLongerThan10 = StrCollection0.Any(x => x.Length > 10);
+            // Testify if the StrCollection0 contains any elements.
+            // true
+            bool anyStringAreLongerThan10 = StrCollection0.Any();
             // Testify if ANY of the ints in IntCollection0 is smaller than 5.
             // True
             bool anyIntsAreSmallerThan5 = IntCollection0.Any(x => x < 5);
@@ -234,12 +234,12 @@ namespace LinqShow
 
         static void DefaultIfEmpty()
         {
-            // If StrCollection2 is empty, then return the list with default value.
+            // Return the collection with default value.
             // {null}
-            IEnumerable<string> emptyDefault0 = StrCollection2.DefaultIfEmpty();
-            // If StrCollection2 is empty, then return the list with default value, which is "NA".
+            IEnumerable<string> emptyDefault0 = Enumerable.Empty<string>().DefaultIfEmpty();
+            // Return the collection with default value, which is "NA".
             // {"NA"}
-            IEnumerable<string> emptyDefault1 = StrCollection2.DefaultIfEmpty("NA");
+            IEnumerable<string> emptyDefault1 = Enumerable.Empty<string>().DefaultIfEmpty("NA");
 
             // For non empty list, return the same list.
             // { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
