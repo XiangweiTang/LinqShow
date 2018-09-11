@@ -47,7 +47,83 @@ namespace LinqShow
             new DerivedClass(3)
         };
         static UserDefineList<string> UserDefineCollection = new UserDefineList<string> { "a", "b", "c" };
-        
+
+
+        class Alias
+        {
+            public string Name = string.Empty;
+            public string NickName = string.Empty;
+        }
+
+        /// <summary>
+        /// SamePerson implenment the IEqualityComparer.
+        /// Rule:
+        /// Iff two alias share the same Name, then they are same.
+        /// </summary>
+        class SamePerson : IEqualityComparer<Alias>
+        {
+            public bool Equals(Alias x, Alias y)
+            {
+                return x.Name == y.Name;
+            }
+
+            public int GetHashCode(Alias alias)
+            {
+                return alias.Name.GetHashCode();
+            }
+        }
+
+        /// <summary>
+        /// StringOrder implenment the IComparer.
+        /// Rule:
+        /// The shorter string is always smaller.
+        /// If two strings are with the same length, then compare each of the chars inside the string.
+        /// The one with smaller ascii code is smaller.
+        /// e.g.
+        ///     "a" is less than "b"
+        ///     "z" is less than "aa"
+        ///     "ab" is less than "ac"
+        ///     "abc" equals to "abc"
+        /// </summary>
+        class StringOrder : IComparer<string>
+        {
+            public int Compare(string x, string y)
+            {
+                if (x.Length < y.Length)
+                    return -1;
+                if (x.Length > y.Length)
+                    return 1;
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (x[i] < y[i])
+                        return -1;
+                    if (x[i] > y[i])
+                        return 1;
+                }
+                return 0;
+            }
+        }
+
+        class BaseClass
+        {
+            public int Value;
+            public BaseClass(int value) { Value = value; }
+        }
+
+        class DerivedClass : BaseClass
+        {
+            public DerivedClass(int value) : base(value) { }
+        }
+
+        class UserDefineList<T> : List<T>
+        {
+            public IEnumerable<T> Where(Func<T, bool> predicate)
+            {
+                Console.WriteLine("The is user define Where().");
+                return Enumerable.Where(this, predicate);
+            }
+        }
+
         static void Main(string[] args)
         {
             MappingAndFiltering();
@@ -61,7 +137,7 @@ namespace LinqShow
             DefaultIfEmpty();
             Distinct();
             Position();
-            Initialize();
+            Generation();
             Set();
             Group();
             Join();
@@ -70,7 +146,22 @@ namespace LinqShow
             To();
             Others();
         }
-                       
+        
+        static void Generation()
+        {
+            // Create an IEnumerable string without any thing inside.
+            // {}
+            IEnumerable<string> emptyList = Enumerable.Empty<string>();
+
+            // Create a collection of integers, starts at 4, with 5 counts.
+            // {4, 5, 6, 7, 8}
+            IEnumerable<int> numberList = Enumerable.Range(4, 5);
+
+            // Create a collection of strings, with 3 copies of "abc".
+            // {"abc", "abc", "abc"}
+            IEnumerable<string> repeatStringList = Enumerable.Repeat("abc", 3);
+        }
+
         static void MappingAndFiltering()
         {
             // Mapping each element in StrCollection0 into its length.
@@ -185,23 +276,6 @@ namespace LinqShow
             bool anyNumberSubStringIsLongerThan3 = matchList.Any(x => x.Value.Length > 3);            
         }
 
-        static void BiCollectionsOperation()
-        {
-            // Concatenate two IEnumerables of the same type. The order is preserved.
-            // {"a", "bc", ... "xyz", "1", "2", "3"}
-            var newList = StrCollection0.Concat(StrCollection1);
-
-            // Compare if each of the elements in array and IEnumerable are the same.
-            // True.
-            string[] strArray = StrCollection0.ToArray();
-            bool equal = strArray.SequenceEqual(StrCollection0);
-            // There is another overload under using the self-define equalilty.
-
-            // Merge StrCollection1 and StrCollection4
-            // {"1 aa", "2 b", "3 cd"}
-            IEnumerable<string> zipStrings = StrCollection1.Zip(StrCollection4, (x, y) => x + " " + y);
-        }
-
         static void Contains()
         {
             // If the StrCollection0 contains the string "abc"
@@ -218,6 +292,44 @@ namespace LinqShow
             bool aliasListContainsSamePerson = AliasCollection0.Contains(newName, new SamePerson());
         }
 
+        static void To()
+        {
+            // Change the IEnumerable to Array(with same order).
+            // string Array { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
+            string[] strArray = StrCollection0.ToArray();
+
+            // Change the IEnumerable to List(with same order).
+            // string List { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
+            List<string> strList = StrCollection0.ToList();
+
+            // Change the IEnumerable to Dictionary, use the integer form as key.
+            // {{1, "1"}, {2, "2"}, {3, "3"}}
+            Dictionary<int, string> intToStrDict = StrCollection1.ToDictionary(x => int.Parse(x));
+            // There is another overload with IEqualityComparer to compare the Key.
+
+            // Change the IEnumerable to Dictionary, use the string as key, the integer form as key.
+            // {{"1", 1}, {"2", 2}, {"3", 3}}
+            Dictionary<string, int> strToIntDict = StrCollection1.ToDictionary(x => x, x=>int.Parse(x));
+            // There is another overload with IEqualityComparer to compare the Key.
+        }
+
+        static void BiCollectionsOperation()
+        {
+            // Concatenate two IEnumerables of the same type. The order is preserved.
+            // {"a", "bc", ... "xyz", "1", "2", "3"}
+            var newList = StrCollection0.Concat(StrCollection1);
+
+            // Compare if each of the elements in array and IEnumerable are the same.
+            // True.
+            string[] strArray = StrCollection0.ToArray();
+            bool equal = strArray.SequenceEqual(StrCollection0);
+            // There is another overload under using the self-define equalilty.
+
+            // Merge StrCollection1 and StrCollection4
+            // {"1 aa", "2 b", "3 cd"}
+            IEnumerable<string> zipStrings = StrCollection1.Zip(StrCollection4, (x, y) => x + " " + y);
+        }
+        
         static void Count()
         {
             // The count of the StrCollection0
@@ -287,7 +399,7 @@ namespace LinqShow
             // null
             string firstElementOrDefault = Enumerable.Empty<string>().FirstOrDefault();
             // null
-            string firstElementOrDefaultWithLength2 = Enumerable.Empty<string>().FirstOrDefault(x => x.Length == 2);
+            string firstElementOrDefaultWithLength2 = StrCollection0.FirstOrDefault(x => x.Length == 10);
 
             // Return the last element of StrCollection0
             // "xyz"
@@ -318,25 +430,10 @@ namespace LinqShow
             string singleLength10OrDefault = StrCollection0.SingleOrDefault(x => x.Length == 10);
         }
 
-        static void Initialize()
-        {
-            // Create an IEnumerable string without any thing inside.
-            // {}
-            IEnumerable<string> emptyList = Enumerable.Empty<string>();
-
-            // Create a collection of integers, starts at 4, with 5 counts.
-            // {4, 5, 6, 7, 8}
-            IEnumerable<int> numberList = Enumerable.Range(4, 5);
-
-            // Create a collection of strings, with 3 copies of "abc".
-            // {"abc", "abc", "abc"}
-            IEnumerable<string> repeatStringList = Enumerable.Repeat("abc", 3);
-        }
-
         static void Set()
         {
             // The intersection between StrCollection1 and StrCollection3
-            // {3}
+            // {"3"}
             IEnumerable<string> intersectStrCollection = StrCollection1.Intersect(StrCollection3);
             // The intersection between AliasCollection0 and AliasCollection1, under the rule of SamePerson
             // Note: All the set operation are DISTINCT(according to the definition of set)!
@@ -448,26 +545,26 @@ namespace LinqShow
         {
             // Order the StrCollection0 with the string itself, with default small to big order.
             // { "a", "a", "abc", "bc", "d", "defgh", "pqr", "xyz" }
-            var orderedStrCollection = StrCollection0.OrderBy(x => x);
+            IOrderedEnumerable<string> orderedStrCollection = StrCollection0.OrderBy(x => x);
             // Order the StrCollection0 with the StringOrder rule.
             // Note, here we implenment the IComparer, not IEqualityComparer.
             // { "a", "a", "d", "bc", "abc", "pqr", "xyz", "defgh" }
-            var orderedStrCollectionWithStringOrder = StrCollection0.OrderBy(x => x, new StringOrder());
+            IOrderedEnumerable<string> orderedStrCollectionWithStringOrder = StrCollection0.OrderBy(x => x, new StringOrder());
 
             // Order the StrCollection0 with the string itself, with default big to small order(desc).
             // {"xyz", "pqr", "defgh", "d", "bc", "abc", "a", "a"}
-            var orderedStrCollectionDesc = StrCollection0.OrderByDescending(x => x);
+            IOrderedEnumerable<string> orderedStrCollectionDesc = StrCollection0.OrderByDescending(x => x);
             // There is another overload of OrderByDescending, by using the self-define IComparer.
 
             // Order the StrCollection0 first with its length, then by itself.
             //  OrderBy: {"a", "d", "a", "bc", "abc", "pqr", "xyz", "defgh"}
             //  ThenBy: {"a", "a", "d", "bc", "abc", "pqr", "xyz", "defgh"}
-            var doubleOrder = StrCollection0.OrderBy(x => x.Length).ThenBy(x => x);
+            IOrderedEnumerable<string> doubleOrder = StrCollection0.OrderBy(x => x.Length).ThenBy(x => x);
             // There is another overload of ThenBy, by using the self-define IComparer.
 
             // Similar to ThenBy, only the reverse order.
             // {"d", "a", "a", "bc", "xyz", "pqr", "abc", "defgh"}
-            var doubleOrderDesc = StrCollection0.OrderBy(x => x.Length).ThenByDescending(x => x);
+            IOrderedEnumerable<string> doubleOrderDesc = StrCollection0.OrderBy(x => x.Length).ThenByDescending(x => x);
             // There is another overload of ThenByDescending, by using the self-define IComparer.
         }
 
@@ -501,27 +598,6 @@ namespace LinqShow
             // There is another overload of TakeWhile with index inside, similar to the SkipWhile.
         }
 
-        static void To()
-        {
-            // Change the IEnumerable to Array(with same order).
-            // string Array { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
-            string[] strArray = StrCollection0.ToArray();
-
-            // Change the IEnumerable to List(with same order).
-            // string List { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
-            List<string> strList = StrCollection0.ToList();
-
-            // Change the IEnumerable to Dictionary, use the integer form as key.
-            // {{1, "1"}, {2, "2"}, {3, "3"}}
-            Dictionary<int, string> intToStrDict = StrCollection1.ToDictionary(x => int.Parse(x));
-            // There is another overload with IEqualityComparer to compare the Key.
-
-            // Change the IEnumerable to Dictionary, use the string as key, the integer form as key.
-            // {{"1", 1}, {"2", 2}, {"3", 3}}
-            Dictionary<string, int> strToIntDict = StrCollection1.ToDictionary(x => x, x=>int.Parse(x));
-            // There is another overload with IEqualityComparer to compare the Key.
-        }
-
         static void Others()
         {
             // OfType filter the collection with certain type.
@@ -539,81 +615,6 @@ namespace LinqShow
             // Use the default Where.
             // Nothing will be printed.
             IEnumerable<string> defaultWhere = UserDefineCollection.AsEnumerable().Where(x => x == "a");
-        }
-    }
-
-    class Alias
-    {
-        public string Name = string.Empty;
-        public string NickName = string.Empty;
-    }
-
-    /// <summary>
-    /// SamePerson implenment the IEqualityComparer.
-    /// Rule:
-    /// Iff two alias share the same Name, then they are same.
-    /// </summary>
-    class SamePerson : IEqualityComparer<Alias>
-    {
-        public bool Equals(Alias x, Alias y)
-        {
-            return x.Name == y.Name;
-        }
-
-        public int GetHashCode(Alias alias)
-        {
-            return alias.Name.GetHashCode();
-        }
-    }
-
-    /// <summary>
-    /// StringOrder implenment the IComparer.
-    /// Rule:
-    /// The shorter string is always smaller.
-    /// If two strings are with the same length, then compare each of the chars inside the string.
-    /// The one with smaller ascii code is smaller.
-    /// e.g.
-    ///     "a" is less than "b"
-    ///     "z" is less than "aa"
-    ///     "ab" is less than "ac"
-    ///     "abc" equals to "abc"
-    /// </summary>
-    class StringOrder : IComparer<string>
-    {
-        public int Compare(string x, string y)
-        {
-            if (x.Length < y.Length)
-                return -1;
-            if (x.Length > y.Length)
-                return 1;
-            for(int i = 0; i < x.Length; i++)
-            {
-                if (x[i] < y[i])
-                    return -1;
-                if (x[i] > y[i])
-                    return 1;
-            }
-            return 0;
-        }
-    }
-
-    class BaseClass
-    {
-        public int Value;
-        public BaseClass(int value) { Value = value; }
-    }
-
-    class DerivedClass : BaseClass
-    {
-        public DerivedClass(int value) : base(value) { }
-    }
-
-    class UserDefineList<T> : List<T>
-    {
-        public IEnumerable<T> Where(Func<T,bool> predicate)
-        {
-            Console.WriteLine("The is user define Where().");
-            return Enumerable.Where(this, predicate);
         }
     }
 }
