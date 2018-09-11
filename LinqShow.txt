@@ -1,0 +1,800 @@
+Linq，也即Language Integrated Query，是.NetFramework 3.5发布的一个特性。该特性主要应用于处理数组，链表，字典，字符串，Xml文件(Linq to Xml)，数据库(Linq to Sql)等等有序数据结构，而一些第三方插件如NewtonSoft的Json.Net也有Json.Linq。熟练掌握Linq可以有效地处理这样的数据类型。下面就来全面地介绍一下Linq。
+本文以及所有的代码都可以在这个链接当中找到：https://github.com/XiangweiTang/LinqShow 
+
+预备知识：
+	扩展方法(Extension method)：
+		C#中，允许用户自己定义扩展方法，比如我们需要完成这样一个功能，给定一个字符串，需要将该字符串重写两遍，我们可以采用如下的方法：
+		public string DoubleString(string s)
+		{
+			return s + s;
+		}
+		在调用的时候，我们可以写成
+		string newString=DoubleString(s);
+		而如果我们将函数写为这样：
+		static public string DoubleString(this string s)
+		{
+			return s + s;
+		}
+		我们可以这样调用
+		string newString=DoubleString(s);
+		也可以这样调用
+		string newString=s.DoubleString();
+		扩展方法有两点需要注意，其一，扩展方法必须是static函数，并且必须位于static类中。其二，扩展方法有且仅有第一个参数需要带有this关键字。
+		从效果上看，扩展方法的参数比其函数定义的参数“少”了一个（实际上是“被挪到”外面去了）。这样的定义方式在Linq中非常普遍，在绝大多数情况下，我们在研究Linq函数的时候可以忽略掉第一个参数。
+
+	泛型(Generic)
+		C#允许泛型，在这里我们一般只考虑泛型函数，其声明方式如下：	
+		void PrintT<T>(T t)
+		{
+			Console.WriteLine(t.ToString());
+		}
+		在这里，不论t的类型是什么，我们都在屏幕上输出其字符串形式。
+		我们在调用的时候，可以采用如下的方法：
+		int n=0;
+		PrintT<int>(n);
+		当然还有简便的调用方法
+		int n=0;
+		PrintT(n);
+		这里由于n的类型已经确定，因此PrintT可以直接判定出输入数据的类型，因此不用在调用的时候再加上<int>。
+		有三点需要注意，其一是泛型函数声明的时候，一定要在函数名后面加上<T>；其二是T并不是强制性的，用户可以根据自己的代码需求自己给泛型起名；其三，一个函数可以接收多个泛型。比如下面的声明是合法的
+		TOutput DoSomething<TInput1, TINput2, TOutput<TInput1, TINput2, TOutput>(TInput1 input1, TINput2 input2)
+		{
+			//Do something here.
+		}
+		表示该函数接收TInput1类型的变量作为第一输入，TInput2类型的变量作为第二输入，TOutput类型的变量作为输出。
+		由于泛型的类型是不确定的，所以泛型函数一般不涉及数值本身的操作。而在Linq主要操作的是序列，也就是序列中不同元素的关系，因此Linq函数的定义里大部分都是用泛型函数的方式来定义的。
+
+	函数代理(Func)
+		Func是C#中的一种函数代理（delegate），一般以Lambda表达式的形式出现。比如
+		Func<string,int> StringToInt=str=>int.Parse(str);
+		这个函数的意义如下：该函数的名称是“StringToIn”，接收一个string作为输入，返回一个int，内部的逻辑是，对于输入的str(string类型)，将其映射为其对应的整数。
+		从效果上看，func接收的若干个类型里，最后一个类型是返回类型，而前面都是输入类型。所以我们在研究输入的时候，不需要看它的最后一个数据类型。
+		同样，函数代理可以和泛型结合，比如
+		Func<TInput, TOutput> DoSomething;（接收一个TInput类型的数值作为输入，返回一个TOutput类型的输出）
+		而代理的优势之处就在于代理是可以作为变量的。也就是说可以宽泛地将上面的代理理解为，这是一个以“func<TInput, TOutput>”为变量类型，“DoSomething”为变量名的变量。而某个函数是可以接收这样一个变量的。而“Func<string,int> StringToInt=str=>int.Parse(str);”则可以理解为这是一个以“Func<string,int>”为类型，“StringToInt”为变量名，“str=>int.Parse(str);”为数值的变量。
+		前文说过，泛型是无法做具体的数值操作的（因为类型不确定），但如果将泛型与代理结合起来，由用户来定义函数代理，那么就可以实现对数值的操作。这样的组合大大提升了Linq函数的功能。
+	
+	Enumerable和IEnumerable
+		Enumerable是System.Linq下的一个类，该类实现了所有的Linq函数。
+		IEnumerable是System.Collections.Generic下的一个接口，方便起见，在下文中，除非特殊说明，否则以序列一词指代IEnumerable。继承该接口需要实现一个函数GetEnumerator()，该函数（遍历器）的作用是给出依次遍历所有成员/元素的方法。在Linq函数中，绝大多数的参数和返回值都是IEnumerable类型的。
+		常见的一些“序列”类型都实现了IEnumerable的接口，比如Array, List, Dictionary, string等。所以我们对这些类型进行操作的时候，都可以使用Linq函数。
+		请注意，无论如何，IEnumerable的元素是不能修改的，因为这样会影响到遍历器对成员的遍历。而所有的Linq函数都不是修改原有序列，而是生成了一个新的对象。
+	
+	具体分析
+		下面我们来分析一下一个Linq函数（具体内容我们会在后文讲解，这里仅仅讨论其形式）
+		public static TResult Aggregate<TSource, TAccumulate, TResult>(this IEnumerable<TSource> source, TAccumulate seed, Func<TAccumulate, TSource, TAccumulate> func, Func<TAccumulate, TResult> resultSelector);
+		一个看上去很长的函数，但如果将其分解开来，可以看成如下的一些部分：
+			public static	常识，忽略
+			TResult	泛型，表示该函数返回的类型为TResult
+			Aggregate<TSource, TAccumulate, TResult>，表示该函数的名称为Aggregate，该函数涉及到三种类型的数据:TSource, TAccumulate, TResult
+			this IEnumerable<TSource> source，这是一个扩展方法，第一个参数在考虑输入的时候可以忽略掉
+			TAccumulate seed，这是该函数接收的“第一个”参数，类型为TAccumulate。
+			Func<TAccumulate, TSource, TAccumulate> func，这是该函数的第二个参数，这个参数是一个函数代理
+				func接收一个TAccumulate类型的变量，一个TSource，返回一个TAccumulate类型的数值。
+				也就是说，用户在第二个参数里，需要写出一个接收两种类型数据，并返回第一个类型的数据的函数。
+			Func<TAccumulate, TResult> resultSelector，这是该函数的第三个参数，这个参数是一个函数代理
+				resultSelector接收一个TAccumulate类型的变量，返回一个TResult类型的数值。
+				也就是说，用户在第三个参数里，需要写出一个接收一种数据类型，并返回另外一个类型的数据的函数。	
+	
+
+0. 变量声明(Line 13-125)
+	static IEnumerable<string> StrCollection0 = new List<string> { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" };
+	static IEnumerable<string> StrCollection1 = new List<string> { "1", "2", "3" };
+	static IEnumerable<string> StrCollection2 = new List<string>();
+	static IEnumerable<string> StrCollection3 = new List<string> { "3", "4", "5", "4" };
+	static IEnumerable<string> StrCollection4 = new List<string> { "aa", "b", "cd" };
+	static IEnumerable<string> StrCollection5 = new List<string> { "xy", "z", "pqr", "xy" };
+	static IEnumerable<IEnumerable<string>> Str2DCollection = new List<List<string>>
+	{
+		new List<string> { "a", "ab", "ac" },
+		new List<string> { "b", "bb" },
+		new List<string> { "c", "ch", "cm" },
+		new List<string> { "d", "da" }
+	};
+	static IEnumerable<int> IntCollection0 = new List<int> { 4, 21, 5, 0, 9, 12, 18, 7 };
+	static IEnumerable<double> DoubleCollection0 = new List<double> { 2.4, 5.3, 9.1, 0.5, 6.4 };
+	static IEnumerable<Alias> AliasCollection0 = new List<Alias>
+	{
+		new Alias { Name = "Wang", NickName = "PlayBoy" },
+		new Alias { Name = "Zhang", NickName = "CleverDude" },
+		new Alias { Name = "Li", NickName = "LazyOne" },
+		new Alias { Name = "Wang", NickName = "GoodLooking" },
+		new Alias { Name = "Chen", NickName = "FootballFan" },
+		new Alias { Name = "Li", NickName = "WakeUpLate" }
+	};
+	static IEnumerable<Alias> AliasCollection1 = new List<Alias>
+	{
+		new Alias { Name = "Zhang", NickName = "Star" },
+		new Alias { Name = "Wang", NickName = "Runner" },
+		new Alias { Name = "Zhao", NickName = "Strong" } };
+	static IEnumerable<BaseClass> DerivedCollection = new List<BaseClass>
+	{
+		new BaseClass(0),
+		new BaseClass(1),
+		new DerivedClass(2),
+		new DerivedClass(3)
+	};
+	static UserDefineList<string> UserDefineCollection = new UserDefineList<string> { "a", "b", "c" };
+
+
+	class Alias
+	{
+		public string Name = string.Empty;
+		public string NickName = string.Empty;
+	}
+
+	/// <summary>
+	/// SamePerson implenment the IEqualityComparer.
+	/// Rule:
+	/// Iff two alias share the same Name, then they are same.
+	/// </summary>
+	class SamePerson : IEqualityComparer<Alias>
+	{
+		public bool Equals(Alias x, Alias y)
+		{
+			return x.Name == y.Name;
+		}
+
+		public int GetHashCode(Alias alias)
+		{
+			return alias.Name.GetHashCode();
+		}
+	}
+
+	/// <summary>
+	/// StringOrder implenment the IComparer.
+	/// Rule:
+	/// The shorter string is always smaller.
+	/// If two strings are with the same length, then compare each of the chars inside the string.
+	/// The one with smaller ascii code is smaller.
+	/// e.g.
+	///	 "a" is less than "b"
+	///	 "z" is less than "aa"
+	///	 "ab" is less than "ac"
+	///	 "abc" equals to "abc"
+	/// </summary>
+	class StringOrder : IComparer<string>
+	{
+		public int Compare(string x, string y)
+		{
+			if (x.Length < y.Length)
+				return -1;
+			if (x.Length > y.Length)
+				return 1;
+			for(int i = 0; i < x.Length; i++)
+			{
+				if (x[i] < y[i])
+					return -1;
+				if (x[i] > y[i])
+					return 1;
+			}
+			return 0;
+		}
+	}
+
+	class BaseClass
+	{
+		public int Value;
+		public BaseClass(int value) { Value = value; }
+	}
+
+	class DerivedClass : BaseClass
+	{
+		public DerivedClass(int value) : base(value) { }
+	}
+
+	class UserDefineList<T> : List<T>
+	{
+		public IEnumerable<T> Where(Func<T,bool> predicate)
+		{
+			Console.WriteLine("The is user define Where().");
+			return Enumerable.Where(this, predicate);
+		}
+	}
+
+1. 生成(line 150-163)
+	Empty	创建一个新的空IEnumerable
+	public static IEnumerable<TResult> Empty<TResult>();
+		IEnumerable<string> emptyList = Enumerable.Empty<string>();
+			结果： {}
+
+	Range	创建一个新的整形IEnumerable，从start开始，共计count个
+	public static IEnumerable<int> Range(int start, int count);
+		IEnumerable<int> numberList = Enumerable.Range(4, 5);
+			结果: {4, 5, 6, 7, 8}
+
+	Repeat	创建一个IEnumerable，以element为固定元素，共计count个。
+	public static IEnumerable<TResult> Repeat<TResult>(TResult element, int count);
+		IEnumerable<string> repeatStringList = Enumerable.Repeat("abc", 3);
+			结果： {"abc", "abc", "abc"}
+
+2. 映射和过滤(line 165-205)
+	Select	对于TSource类型的列表的每一项进行操作（映射），并将操作（映射）后的结果的列表返回。
+	public static IEnumerable<TResult> Select<TSource, TResult>(this IEnumerable<TSource> source, Func<TSource, TResult> selector);			
+		IEnumerable<int> stringLengthList = StrCollection0.Select(x => x.Length);
+			返回列表中的每一个字符串的长度。
+			{1, 2, 1, 3, 1, 5, 3, 3}
+
+	Select	对于TSource类型的列表的每一项进行一项操作（映射），并引用其对应的序列号，并将操作（映射）后的结果的列表返回。
+	public static IEnumerable<TResult> Select<TSource, TResult>(this IEnumerable<TSource> source, Func<TSource, int, TResult> selector);
+		IEnumerable<string> stringLengthListWithIndex = StrCollection0.Select((x, y) => y + " " + x.Length);
+			其中，x是列表中的每一个字符串的长度，y是原列表中每一项的序列号（相当于Index）。
+			将各字符串的序号以及字符串长度返回。
+			{"0 1", "1 2", "2 1", "3 3", "4 1", "5 5", "6 3", "7 3"}
+
+	Where	对于TSource类型的列表的每一项进行判定，并将符合判定结果的项返回（过滤）
+	public static IEnumerable<TSource> Where<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		IEnumerable<string> stringWithLengthLongerThan2 = StrCollection0.Where(x => x.Length > 2);
+			将长度超过2的字符串返回
+			{"abc", "defgh", "pqr", "xyz"}
+	
+	Where	对于TSource类型的列表的每一项以及其序列号进行判定，并将符合判定结果的项返回（过滤）
+	public static IEnumerable<TSource> Where<TSource>(this IEnumerable<TSource> source, Func<TSource, int, bool> predicate);
+		IEnumerable<string> stringWithLengthLongerThan2WithIndex = StrCollection0.Where((x, y) => x.Length > 2 && y % 2 == 0);
+			返回所有长度超过2并且序列号是偶数的项。
+			{"pqr"}(length 3, index 6)
+
+	SelectMany	对于TSource类型的列表的每一项生成一个列表，然后依次返回该“列表的列表”的每一项，通俗地说，就是把一个二维结构“展平”成一维结构
+	public static IEnumerable<TResult> SelectMany<TSource, TResult>(this IEnumerable<TSource> source, Func<TSource, IEnumerable<TResult>> selector);
+		IEnumerable<char> charsFromStringList = StrCollection0.SelectMany(x => x);
+			将字符串列表中的每一项（字符串）映射为自身（字符串），而字符串是字符的列表，因此该结构是关于字符的“列表的列表/二维结构”，然后SelectMany将其生成为一维结构，也即字符的列表。
+			{ 'a', 'b', 'c', 'd', 'a', 'b', 'c', 'a', 'd', 'e', ...}
+		IEnumerable<int> integersFromIntegerList = IntCollection0.SelectMany(x => Enumerable.Range(0, x));
+			将整数列表中的每一项（整数）映射为一个整数的列表（参考前文的Range函数），因此该结构是关于整数的“列表的列表”，然后SelectMany将其生成为一维结构，也即整数的列表。
+			1. {4, 21, 5, 0, 9, ...}	->
+			2. {{0, 1, 2, 3}, {0, 1, 2, ... 20}, {0, 1, 2, 3, 4}, {0}, {0, 1, 2, ..., 8}, ...}	->
+			3. { 0, 1, 2, 3, 0, 1, 2, ... , 20, 0, 1, 2, 3, 4, 0, 0, 1, 2,... , 8, ...}
+
+	SelectMany	和Select的带序列号的重载类似
+	public static IEnumerable<TResult> SelectMany<TSource, TResult>(this IEnumerable<TSource> source, Func<TSource, int, IEnumerable<TResult>> selector);
+		IEnumerable<char> charsAndIndicesFromStringList = StrCollection0.SelectMany((x, y) => x + y);
+			将字符串列表中的每一项生成为字符串+序号的新字符串，然后SelectMany
+			{'a', '0', 'b', 'c', '1', 'd', '2', ...}
+
+	SelectMany	两个参数，第一个参数是将TSource列表的每一项生成一个TCollection类型的列表，第二项是根据TSource, TCollection生成输出。最终返回一个输出的列表。
+	public static IEnumerable<TResult> SelectMany<TSource, TCollection, TResult>(this IEnumerable<TSource> source, Func<TSource, IEnumerable<TCollection>> collectionSelector, Func<TSource, TCollection, TResult> resultSelector);
+		IEnumerable<string> stringAndCharsFromStringList = StrCollection0.SelectMany(x => x, (x, y) => x + " " + y);
+			将字符串列表中的每一项映射为自身（作为输入），然后每一个字符串(x)以及字符(y)都对应生成二者连接起来的字符串
+			1. {"a", "bc", "d", "abc", ...}
+			2. {{"a"+" "+'a'}, {"bc"+" "+'b', "bc"+" "+'c'}, {"d"+" "+'d'}, {"abc"+" "+'a', "abc"+" "+'b', "abc"+" "+'c'}...}
+			3. {"a a", "bc b", "bc c", "d d", "abc a", "abc b", "abc c"...}
+	
+	SelectMany	在上一个重载中加入了序列号。
+	public static IEnumerable<TResult> SelectMany<TSource, TCollection, TResult>(this IEnumerable<TSource> source, Func<TSource, int, IEnumerable<TCollection>> collectionSelector, Func<TSource, TCollection, TResult> resultSelector);
+
+3. 折叠/聚合(Line 207-217)
+	Aggregate	对于序列里的相邻两项做某种操作，然后将结果与下一项继续操作。需要注意的是，返回类型固定为TSource，与输入类型IEnumerable<TSource>的元素类型相同，也即如果输入是字符串序列，则输出一定是字符串，不能是其他类型。
+	public static TSource Aggregate<TSource>(this IEnumerable<TSource> source, Func<TSource, TSource, TSource> func);
+		string maxLengthStr = StrCollection0.Aggregate((x, y) => x.Length > y.Length ? x : y);
+			获取字符串列表中最长的一个字符串：对于相邻的两项进行比较，如果第一项的长度更长则保留第一项，否则保留第二项，然后以此类推。
+			"defgh"
+
+	Aggregate	在上一重载种加入了种子值，返回类型与种子类型相同，与输入序列类型不一定相同。
+	public static TAccumulate Aggregate<TSource, TAccumulate>(this IEnumerable<TSource> source, TAccumulate seed, Func<TAccumulate, TSource, TAccumulate> func);
+		int longestLengthAtLeast10 = StrCollection0.Aggregate(0, (x, y) => x >= y.Length ? x : y.Length);
+			获取字符串列表中最长的字符串长度：对于“种子”和下一项进行比较，如果种子大于下一项的长度则保留种子，否则保留“下一项的长度”，以此类推，最终返回值为整数。
+			5
+
+	Aggregate	三个参数，前两个和上一项相同，第三项是结果映射。
+	public static TResult Aggregate<TSource, TAccumulate, TResult>(this IEnumerable<TSource> source, TAccumulate seed, Func<TAccumulate, TSource, TAccumulate> func, Func<TAccumulate, TResult> resultSelector);
+		string longestLengthAtLeast10Str = StrCollection0.Aggregate(10, (x, y) => x >= y.Length ? x : y.Length, x => x.ToString());
+			和上一个类似，只不过输出为字符串格式。
+			"5"
+
+4. 存在量词(Line 219-234)
+	All	判定该序列里是否所有项都满足某个条件。
+	public static bool All<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		bool allStringsAreShorterThan10 = StrCollection0.All(x => x.Length < 10);
+			判定是否该字符串列表中所有元素的长度都小于10
+			true
+	
+	Any	判定该序列里是否存在元素。
+	public static bool Any<TSource>(this IEnumerable<TSource> source);
+		bool anyStringAreLongerThan10 = StrCollection0.Any();
+			判定该序列中是否存在元素
+			true
+	
+	Any	判定该序列里是否存在满足某个条件的元素
+	public static bool Any<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		bool anyIntsAreSmallerThan5 = IntCollection0.Any(x => x < 5);
+			判定序列中是否存在有小于5的整数
+			true
+
+5. 数值运算(Line 236-261)
+	Average	计算整数序列中所有元素的算术平均值
+	public static double Average(this IEnumerable<int> source);		
+		double avgOfInts = IntCollection0.Average();
+			计算整数序列所有元素的算术平均值
+			9.5
+	
+	Average	计算整数序列中所有元素的某个对应数值的均值
+	public static double Average<TSource>(this IEnumerable<TSource> source, Func<TSource, int> selector);
+		double avgLengthOfStrings = StrCollection0.Average(x => x.Length);
+			计算字符串序列里所有元素长度的算术平均值
+			2.375
+
+	还有其他一些重载是针对float, double, decimal等数据的序列。
+
+	Max	计算整数序列中所有元素的最大值
+		int maxOfInts = IntCollection0.Max();
+		double maxOfDoubles = DoubleCollection0.Max();
+		int maxLengthOfStrings = StrCollection0.Max(x => x.Length);
+	Min	计算整数序列中所有元素的最小值
+		int minOfInts = IntCollection0.Min();
+		double minOfDoubles = DoubleCollection0.Min();
+		int minLengthOfStrings = StrCollection0.Min(x => x.Length);
+	Sum	计算整数序列中所有元素之和
+		int sumOfInts = IntCollection0.Sum();
+		double sumOfDoubles = DoubleCollection0.Sum();
+		int sumLengthOfStrings = StrCollection0.Sum(x => x.Length);
+
+	以及对应的其他数据类型的重载。
+
+6. 元素类型转换(Line 263-277)
+	Cast	将某个数据结构转化为序列。
+	public static IEnumerable<TResult> Cast<TResult>(this IEnumerable source);
+		Regex NumReg = new Regex("[0-9]+");
+		string testString = "123abc45def6ghi7890jk";
+		var matches = NumReg.Matches(testString);
+			这里matches是一个MatchCollection，包含了用该正则表达式匹配到的所有元素的集合，该集合可以通过matches[0], matches[1]等方式调用，但它并不是一个IEnumerable结构，所以不可以用matches.All()或者matches.Any()一类的Linq函数。
+		var matchList=matches.Cast<Match>();
+			matchList是matches经过转换得到的Match的序列。
+		bool anyNumberSubStringIsLongerThan3 = matchList.Any(x => x.Value.Length > 3);
+			判定该序列中是否存在匹配长度大于3的元素
+			true("7890"满足匹配且长度大于3)
+
+7. 包含(Line 279-293)
+	Contains	判定序列中是否存在特定元素
+		bool listContainsThisString = StrCollection0.Contains("abc");
+			判定该字符串序列中是否包含"abc"
+			true
+	
+		Alias newName = new Alias { Name = "Zhang", NickName = "Star" };
+		bool aliasListContains = AliasCollection0.Contains(newName);
+			判定化名序列中是否包含一个名字为"Zhang“，昵称为"Star“的元素
+			false
+
+	Contains	判定该序列中是否存在特定元素，使用用户自定义的“等于比较”
+		bool aliasListContainsSamePerson = AliasCollection0.Contains(newName, new SamePerson());
+			SamePerson是一个自定义类，实现的IEqualityComparer（“等于比较”），也就是说，这个类定义了“什么是相等”（因为“包含”的意思就是，序列中是否存在某一元素与该元素相等）。通过观察其代码可以知道，只要两个“化名元素”有相同的“名字”（昵称无所谓），即被判定为相等。
+			在此定义下，由于该“化名序列”中存在名字为“Zhang”的元素，因此判定结果为存在
+			注：在Linq中存在相当数量的函数需要根据“两元素是否相等”来进行操作，因此都有对IEqualityComparer的重载，意义都是相同的，就是自定义相等。
+			true
+		
+
+8. 序列转换(Line 295-314)
+	ToArray	将序列转化为数组（顺序不变）
+	public static TSource[] ToArray<TSource>(this IEnumerable<TSource> source);
+		string[] strArray = StrCollection0.ToArray();
+			字符串数组{ "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
+
+	ToList	将序列转化为链表（顺序不表）
+		List<string> strList = StrCollection0.ToList();
+			字符串链表{ "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
+
+	ToDictionary	将序列转化为字典，自定义Key的取值
+	public static Dictionary<TKey, TSource> ToDictionary<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		Dictionary<int, string> intToStrDict = StrCollection1.ToDictionary(x => int.Parse(x));
+			将序列转化为字典，以字符串的长度作为Key，以元素本身作为Value。
+			注：在所有的转化字典的过程中，一定要确保Key的独一无二，否则会抛出异常
+			{{1, "1"}, {2, "2"}, {3, "3"}}
+
+	ToDictionary	上面的方法还有一个对Key使用自定义相等的重载
+	public static Dictionary<TKey, TSource> ToDictionary<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, IEqualityComparer<TKey> comparer);
+
+	ToDictionary	将序列转化为字典，自定义Key和Value的取值
+	public static Dictionary<TKey, TElement> ToDictionary<TSource, TKey, TElement>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector);
+		Dictionary<string, int> strToIntDict = StrCollection1.ToDictionary(x => x, x=>int.Parse(x));
+			将序列转化为字典，以字符串自身作为Key，以字符串的长度作为Value。
+			{{"1", 1}, {"2", 2}, {"3", 3}}
+
+	ToDictionary	上面的方法还有一个对Key使用自定义相等的重载
+	public static Dictionary<TKey, TElement> ToDictionary<TSource, TKey, TElement>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer);
+
+9. 双序列操作(Line 316-331)
+	Concat	连接两个序列，要求两个序列必须类型一致。
+	public static IEnumerable<TSource> Concat<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second);
+		var newList = StrCollection0.Concat(StrCollection1);
+			将两个序列的元素依次组成一个新的序列
+			{"a", "bc", ... "xyz", "1", "2", "3"}
+
+	SequentialEqual	判定两个序列的元素是否依次相等（不考虑两个序列的类型是否一致）。
+	public static bool SequenceEqual<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second);
+		string[] strArray = StrCollection0.ToArray();
+			由一个序列生成一个数组。
+		bool equal = strArray.SequenceEqual(StrCollection0);
+			判定原序列和新的数组是否依次相等。注：原序列和数组是两个不同的对象（数组是根据原序列生成的一个副本），类型也不同，因此如果是单纯的相等比较，结果是false。
+			true
+
+	SequentialEqual	上面的方法还有一个针对元素相等判定的重载
+	public static bool SequenceEqual<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second, IEqualityComparer<TSource> comparer);
+
+	Zip	将两个序列的所有元素依次结合
+	public static IEnumerable<TResult> Zip<TFirst, TSecond, TResult>(this IEnumerable<TFirst> first, IEnumerable<TSecond> second, Func<TFirst, TSecond, TResult> resultSelector);
+		IEnumerable<string> zipStrings = StrCollection1.Zip(StrCollection4, (x, y) => x + " " + y);
+			将两个字符串数组的所有元素依次组合成一个新的字符串
+			注：不要求两个序列的长度一致，序列长度不一致不会抛出异常，以较短的一侧为准
+			{"1 aa", "2 b", "3 cd"}
+
+10. 数量(Line 333-345)
+	Count	返回序列的元素个数
+	public static int Count<TSource>(this IEnumerable<TSource> source);
+		int StrCollectionCount = StrCollection0.Count();
+			返回该序列的元素个数
+			注：请区分以下三者的不同。IEnumerable.Count(), List.Count, Array.Length。第一个是函数，二三个是属性；由于List和Array均实现了IEnumerable的接口，所以Listh和Array也可以调用Count()方法，但IEnumerable接口不具备Counth或者Length的属性。
+			8
+
+	public static IEnumerable<TSource> DefaultIfEmpty<TSource>(this IEnumerable<TSource> source);
+		int StrCollectionCountWithCondition = StrCollection0.Count(x => x == "a");
+			返回该序列中等于"a"的元素个数
+			2
+
+	LongCount	与Count类似，适用于数量超过Int32长度的序列。
+	public static long LongCount<TSource>(this IEnumerable<TSource> source);
+		long StrCollectionCountLong = StrCollection0.LongCount();
+
+	public static long LongCount<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		long StrCollectionCountLongWithCondition = StrCollection0.LongCount(x => x == "a");
+
+11. 空即默认(Line 347-360)
+	DefaultIfEmpty	如果该序列为空，则返回一个包含默认值的序列，否则返回原序列
+	public static IEnumerable<TSource> DefaultIfEmpty<TSource>(this IEnumerable<TSource> source);
+		IEnumerable<string> emptyDefault0 = Enumerable.Empty<string>().DefaultIfEmpty();
+			由于该序列是空，所以返回默认值
+			{null}
+
+	DefaultIfEmpty	同上，在函数中设定好初始值
+	public static IEnumerable<TSource> DefaultIfEmpty<TSource>(this IEnumerable<TSource> source, TSource defaultValue);
+		IEnumerable<string> emptyDefault1 = Enumerable.Empty<string>().DefaultIfEmpty("NA");
+			由于该序列是空，所以返回设定好的默认值
+			{"NA"}
+		
+		IEnumerable<string> nonEmptyDefault0 = StrCollection0.DefaultIfEmpty();
+		IEnumerable<string> nonEmptyDefault1 = StrCollection0.DefaultIfEmpty("NA");
+			对于非空序列，返回原序列
+			{ "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }
+	
+	
+12. 去重复(Line 362-378)
+	Distinct	序列中所有重复项只保留第一个
+	public static IEnumerable<TSource> Distinct<TSource>(this IEnumerable<TSource> source);
+		IEnumerable<string> distinctStrCollection = StrCollection0.Distinct();
+			{ "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" }->
+			{ "a", "bc", "d", "abc",	"defgh", "pqr", "xyz" }
+			第二个"a"被去掉
+
+	Distinct	自定义“相等”的重载
+	public static IEnumerable<TSource> Distinct<TSource>(this IEnumerable<TSource> source, IEqualityComparer<TSource> comparer);
+		IEnumerable<Alias> distinctAliasListSamePerson = AliasCollection0.Distinct(new SamePerson());
+			由于SamePerson的定义是只看Name，所以所有相同Name的元素只保留第一个
+			{{ Name="Wang", NickName="PlayBoy"},{ Name = "Zhang", NickName = "CleverDude" },{ Name = "Li", NickName = "LazyOne" },{ Name = "Chen", NickName = "FootballFan" },}
+
+13. 定位(Line 380-431)
+	ElementAt	找到序列中的第N个元素（从0开始）
+	public static TSource ElementAt<TSource>(this IEnumerable<TSource> source, int index);
+		string elementAtOne = StrCollection1.ElementAt(1);
+			返回序列中的第1个元素（0，1）
+			"2"
+	
+	ElementAtOrDefault	找到序列中的第N个元素，如果N取值超出范围，则返回默认值
+	public static TSource ElementAtOrDefault<TSource>(this IEnumerable<TSource> source, int index);
+		string elementAtTenDefault = StrCollection1.ElementAtOrDefault(10);
+			返回序列中的第10个元素（超出范围）
+			null
+
+	First	返回序列中的首个元素
+	public static TSource First<TSource>(this IEnumerable<TSource> source);
+		string firstElement = StrCollection0.First();
+			返回序列中的首个元素
+			"a"
+
+	First	返回序列中的首个满足某个条件的元素
+	public static TSource First<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		string firstElementWithLength3 = StrCollection0.First(x => x.Length == 3);
+			返回序列中的首个长度为3的元素
+			"abc"
+
+	FirstOrDefault	返回序列中的首个元素，如果不存在，则返回默认值
+	public static TSource FirstOrDefault<TSource>(this IEnumerable<TSource> source);
+		string firstElementOrDefault = Enumerable.Empty<string>().FirstOrDefault();
+			该序列为空，所以首个元素不存在
+			null
+
+	FirstOrDefault	返回序列中满足某个条件的首个元素，如果不存在，则返回默认值
+	public static TSource FirstOrDefault<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		string firstElementOrDefaultWithLength2 = StrCollection0.FirstOrDefault(x => x.Length == 10);
+			该序列中不存在长度为10的元素，所以这样的元素不存在
+			null
+
+	Last	返回序列中的最后一个元素
+	public static TSource Last<TSource>(this IEnumerable<TSource> source);
+		string lastElement = StrCollection0.Last();
+			返回该序列的最后一个元素
+				"xyz"
+
+	Last	返回序列中满足某个条件的最后一个元素，类似于First
+	public static TSource Last<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+
+	LastOrDefault	返回序列中的最后一个元素，如果不存在，则返回默认值，类似于FirstOrDefault
+	public static TSource LastOrDefault<TSource>(this IEnumerable<TSource> source);
+
+	LastOrDefault	返回序列中满足某个条件的最后一个元素，如果不存在，则返回默认值，类似于FirstOrDefault
+	public static TSource LastOrDefault<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+
+	Single	返回序列中唯一的元素，如果不存在或者序列有多于一个元素，则抛出异常
+	public static TSource Single<TSource>(this IEnumerable<TSource> source);
+		string sinlgeStr = StrCollection0.Single();
+		返回StrCollection0中的唯一元素
+		该序列不止一个元素，抛出异常。
+	
+	Single	返回序列中唯一满足某个条件的元素，如果满足该条件的元素不存在或者不止一个，则抛出异常
+	public static TSource Single<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		string singleLength5 = StrCollection0.Single(x => x.Length == 5);
+		序列中唯一一个长度为5的元素
+		"defgh"
+
+	SingleOrDefault	返回序列中唯一的元素，如果该元素不存在，则返回默认值，如果多于一个，抛出异常
+	public static TSource SingleOrDefault<TSource>(this IEnumerable<TSource> source);
+		string singleOrDefaultStr = StrCollection0.Single();
+		该序列不止一个元素，抛出异常。
+	
+	SingleOrDefault	返回序列中唯一满足某个条件的元素，如果该元素不存在，则返回默认值，如果多余一个，抛出异常
+	public static TSource SingleOrDefault<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		string singleLength10OrDefault = StrCollection0.SingleOrDefault(x => x.Length == 10);
+		该序列中不存在长度为10的元素，所以这样的元素不存在
+		null
+
+14, 集合运算(Line 433-463)
+	Intersect	集合的交，返回两个序列的交集。注：由于集合元素有互异性，因此集合运算的结果一定是非重复的，这一点对于下面的集合运算全部有效。
+	public static IEnumerable<TSource> Intersect<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second);
+		IEnumerable<string> intersectStrCollection = StrCollection1.Intersect(StrCollection3);
+			返回StrCollection1和StrCollection3的交集
+			{"3"}
+
+	Intersect	集合的交，用自定义的等于进行比较
+	public static IEnumerable<TSource> Intersect<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second, IEqualityComparer<TSource> comparer);
+		IEnumerable<Alias> intersectAliasCollection0 = AliasCollection0.Intersect(AliasCollection1, new SamePerson());
+			返回AliasCollection0和AliasCollection1的交集，采用SamePerson的定义
+			保留了第一个序列中的第一个"Wang"和第一个"Zhang"
+			{{ Name="Wang", NickName="PlayBoy"}, { Name="Zhang", NickName="CleverDude"}}
+
+		IEnumerable<Alias> intersectAliasCollection1 = AliasCollection1.Intersect(AliasCollection0, new SamePerson());
+			顺序颠倒，返回AliasCollection1和AliasCollection0的交集，采用SamePerson的定义
+			保留了第二个序列中的第一个"Wang"和第一个"Zhang"
+			所以在采用自定义的“等于”的情况下，交换两个序列的位置，是可能造成元素的不同的。
+			{{ Name = "Zhang", NickName = "Star" }, { Name = "Wang", NickName = "Runner" }}
+
+	Union	集合的并
+	public static IEnumerable<TSource> Union<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second);
+		IEnumerable<string> unionStrCollection = StrCollection1.Union(StrCollection3);
+			返回StrCollection1和StrCollection3的并集
+			{"1", "2", "3", "4", "5"}
+
+	Union	集合的并，用自定义的等于进行比较
+	public static IEnumerable<TSource> Union<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second, IEqualityComparer<TSource> comparer);
+		IEnumerable<Alias> unionAliasList = AliasCollection0.Union(AliasCollection1, new SamePerson());
+			返回AliasCollection0和AliasCollection1的并集，采用SamePerson的定义
+			保留了第一个序列中的"Wang""Zhang""Li""Chen"和第二个序列中的"Zhao"
+			{{ Name="Wang", NickName="PlayBoy"}, { Name="Zhang", NickName="CleverDude"}, { Name="Li", NickName="LazyOne"}, { Name="Chen", NickName="FootballFan"}, { Name="Zhao", NickName = "Strong" }}
+
+	Except	集合的差（在第一个序列中却不在第二个序列中的元素）
+	public static IEnumerable<TSource> Except<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second);
+		IEnumerable<string> diffStrCollection = StrCollection1.Except(StrCollection3);
+			在StrCollection1中却不在StrCollection3中的元素
+			{"1", "2"}
+
+	Except	集合的差，用自定义的等于进行比较
+	public static IEnumerable<TSource> Except<TSource>(this IEnumerable<TSource> first, IEnumerable<TSource> second, IEqualityComparer<TSource> comparer);
+		IEnumerable<Alias> diffAliasList = AliasCollection0.Except(AliasCollection1, new SamePerson());
+			返回AliasCollection0和AliasCollection1的差，采用SamePerson的定义
+			返回第一个序列中的"Li""Chen"
+			{ Name="Li", NickName="LazyOne"}, { Name="Chen", NickName="FootballFan"}
+
+15	分组(Line 465-521)
+	GroupBy	采用某一规则，然后将所有序列中的元素依照该规则分组，分组的依据被称为"Key"
+	public static IEnumerable<IGrouping<TKey, TSource>> GroupBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		IEnumerable<IGrouping<int, string>> groupByLength = StrCollection0.GroupBy(x => x.Length);
+			将字符串序列分组，分组依据为该字符串的长度。
+			{{ Key=1: "a", "d", "a" }, { Key=2: "bc" }, { Key=3: "abc", "pqr", "xyz" }, { Key=5: "defgh" }}
+		
+	GroupBy	分组，并采用自定义的Key“相等”规则（分组的流程是，有相同Key的元素会被分到同一组，所以可以自定义“相等”）
+	public static IEnumerable<IGrouping<TKey, TSource>> GroupBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, IEqualityComparer<TKey> comparer);
+		IEnumerable<IGrouping<Alias, Alias>> groupByName = AliasCollection0.GroupBy(x => x, new SamePerson());
+			将化名序列分组，分组依据为化名自身，且采用SamePerson进行相等的判定。
+			{
+				{ Key= {"Wang", "PlayBoy"}: {"Wang", "PlayBoy"}, {"Wang", "GoodLooking"} },
+				{ Key= {"Zhang", "CleverDude"}: {"Zhang", "CleverDude"} },
+				{ Key= {"Li", "LazyOne"}: {"Li", "LazyOne"}, {"Li", "WakeUpLate" } },
+				{ Key= {"Chen", "FootballFan"}: {"Chen", "FootballFan"} }
+			}
+	
+	GroupBy	分组，被分组的元素映射为其他形式
+	public static IEnumerable<IGrouping<TKey, TElement>> GroupBy<TSource, TKey, TElement>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector);
+		IEnumerable<IGrouping<int,char>> groupByLengthGetChar = StrCollection0.GroupBy(x => x.Length, x => x[0]);
+			将字符串序列分组，分组依据为其长度，返回结果为字符串的第0个字符
+			{
+				{ Key=1: 'a', 'd', 'a' } ("a", "d", "a"的第0个字符)，
+				{ Key=2: 'b' } ("bc"的第0个字符),
+				{ Key=3: 'a', 'p', 'x' } ("abc", "pqr", "xyz"的第0个字符),
+				{ key=5: 'd' } ("defgh"的第0个字符)
+			}
+	
+	GroupBy	分组，在每一个组中，根据该组的Key和该组本身根据一定规则得到特定结果
+	public static IEnumerable<TResult> GroupBy<TSource, TKey, TResult>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TKey, IEnumerable<TSource>, TResult> resultSelector);
+		IEnumerable<string> groupByLengthGetCount = StrCollection0.GroupBy(x => x.Length, (key, group) => key + " " + group.Count());
+			首先根据字符串的长度分组，然后每一组的Key（长度）和该组元素的个数作为返回值
+			{"1 3", "2 1", "3 3", "5 1"}（长度为1的组有3个元素，2的组有1个元素，等等）
+
+	GroupBy 分组，在每一个组中，将每个元素映射为需要的值（那么这一组就映射为“需要的值的序列”），再根据该组的Key和“需要的值的序列”生成需要的结果
+	public static IEnumerable<TResult> GroupBy<TSource, TKey, TElement, TResult>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, Func<TKey, IEnumerable<TElement>, TResult> resultSelector);
+		IEnumerable<string> groupByLengthGetCountAndMergeChar = StrCollection0.GroupBy(x => x.Length, x => x[0], (key, group) => key + " " + new string(group.ToArray()));
+			首先根据字符串的长度分组	{{1: "a", "d", "a"},	{2: "bc"},	{3: "abc", "pqr", "xyz"},	{5:	"defgh"}}
+			然后将各组的各个元素映射为其第一个字符	{{1: 'a', 'd', 'a'},	{2: 'b'},	{3: 'a', 'p', 'x'},	{5: 'd'}}
+			再将各组的Key和所有的字符转化成为字符串，比如当Key=3的时候，转变为"3"+" "+"apx"
+			{"1 ada", "2 b", "3 apx", "5 d"}
+		
+	上面提到的三种GroupBy的函数，还各自带有一个针对“自定义Key相等”重载的函数。
+
+	ToLookup	转化为可查找的结构，功能和GroupBy几乎一致，但ToLookup可以通过Key来查找对应的组的内容，而GroupBy不可以。
+	public static ILookup<TKey, TSource> ToLookup<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		ILookup<int, string> toLookUpByLength = StrCollection0.ToLookup(x => x.Length);
+			将字符串根据其长度分组
+			{
+				{ Key=1: "a", "d", "a" },
+				{ Key=2: "bc" },
+				{ Key=3: "abc", "pqr", "xyz" },
+				{ Key=5: "defgh" }
+			}
+		IEnumerable<string> groupWithLength1 = toLookUpByLength[1];
+			获得其中长度为1的分组的内容
+			{"a", "d", "a"}
+
+	ToLookup	转化为可查找结构，将每个元素映射为需要的值，和GroupBy对应的重载类似。
+	public static ILookup<TKey, TElement> ToLookup<TSource, TKey, TElement>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector);
+		ILookup<int, char> toLookUpByLengthGetChar = StrCollection0.ToLookup(x => x.Length, x => x[0]);
+			{
+				{ Key=1: 'a', 'd', 'a' } ("a", "d", "a"的第0个字符),
+				{ Key=2: 'b' } ("bc"的第0个字符),
+				{ Key=3: 'a', 'p', 'x' } ("abc", "pqr", "xyz"的第0个字符),
+				{ key=5: 'd' } ("defgh"的第0个字符)
+			}
+		IEnumerable<char> groupOfCharWithLength3 = toLookUpByLengthGetChar[3];
+			{'a', 'p', 'x'}
+	
+	还有两个针对“自定义Key相等”重载的ToLookup函数。
+
+16. 连接(Line 523-542)
+	Join	利用某种规则，连接两个序列中相等的元素（类似于Sql里的Join），“连接的”序列被称为“外序列”，“被连接的”序列被称为“内序列”。
+	public static IEnumerable<TResult> Join<TOuter, TInner, TKey, TResult>(this IEnumerable<TOuter> outer, IEnumerable<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, TInner, TResult> resultSelector);
+		IEnumerable<string> joinBySameLength = StrCollection4.Join(StrCollection5, x => x.Length, x => x.Length, (x, y) => x + " " + y);
+			需要连接的两个字符串，第一个是StrCollection4，第二个是StrCollection5
+			第一个字符串序列中，以各自的长度作为Key。("aa": 2, "cd": 2, "b": 1)
+			第二个字符串序列中，以各自的长度作为Key。("xy": 2, "z": 1, "pqr": 3, "xy": 2)
+			对于拥有相同Key的元素，将它们以空格连接。
+			{"aa xy", "cd xy", "b z", "aa xy", "cd xy"}
+
+	还有一个针对“自定义Key相等”的重载。
+
+	GroupJoin	组连接，意义上大致等同于连接。由于连接也涉及到分组（因为有Key），所以对于每个外序列的元素，可以根据它的Key找到一个内序列的组与其对应。GroupJoin既是针对这一原理，返回的值为外序列的元素与内序列的组进行操作得到的结果。
+	public static IEnumerable<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this IEnumerable<TOuter> outer, IEnumerable<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, IEnumerable<TInner>, TResult> resultSelector);
+		IEnumerable<string> groupJoinBySameLengthGetFirst = StrCollection4.GroupJoin(StrCollection5, x => x.Length, x => x.Length, (x, y) => x + " " + y.First());
+			前若干步和Join完全一致，区别在于，最后的返回值是"外序列的元素x"+" "+"对应的内序列的组的第一个元素（组的第一个元素，就是字符串）"
+			{ "aa xy", "cd xy", "b z" }(aa对应的Key是2，对应的内序列的Key为2的组的第一个元素为"xy"，以此类推)
+
+		IEnumerable<string> joinBySameLengthGetFirst = StrCollection4.Join(StrCollection5, x => x.Length, x => x.Length, (x, y) => x + " " + y.First());
+			对比同样参数的Join，最后的返回值是"外序列的元素"+" "+"内序列的元素的第一个元素（字符串的第一个元素，就是字符）"
+			{ "aa x", "cd x", "b z", "aa x", "cd x" }
+			
+17. 排序(Line 544-569)
+	OrderBy	根据序列元素的某一属性进行升序排列
+	public static IOrderedEnumerable<TSource> OrderBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		IOrderedEnumerable<string> orderedStrCollection = StrCollection0.OrderBy(x => x);
+			将字符串序列按照其自身顺序进行排序
+			{ "a", "a", "abc", "bc", "d", "defgh", "pqr", "xyz" }
+
+	OrderBy	根据序列元素的某一属性进行排序，自定义“排序规则”
+	public static IOrderedEnumerable<TSource> OrderBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, IComparer<TKey> comparer);
+		IOrderedEnumerable<string> orderedStrCollectionWithStringOrder = StrCollection0.OrderBy(x => x, new StringOrder());
+			StringOrder重写了IComparer，该接口定义了一个全序规则，也就是任意两个字符串相比，哪个为“大”，哪个为“小”
+			根据StringOrder的定义，首先比较两个字符串的长度，长者为大，短者为小；如果长度相同，依次比较每个字符，以字符的编码顺序排序，后者为大，先者为小；如果完全相同，则两者相同。
+			注意，IEqualityComparer定义的是两者是否相等，而IComparer定义的是两者的顺序。
+			{ "a", "a", "d", "bc", "abc", "pqr", "xyz", "defgh" }
+
+	OrderByDescending	根据元素的某一属性进行降序排列
+	public static IOrderedEnumerable<TSource> OrderByDescending<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		IOrderedEnumerable<string> orderedStrCollectionDesc = StrCollection0.OrderByDescending(x => x);
+			{"xyz", "pqr", "defgh", "d", "bc", "abc", "a", "a"}
+
+	OrderByDescending 还有一个重写IComparer的重载
+
+	ThenBy	在已排序的序列中，针对相同属性的元素的某一属性再次升序排序。注：“已排序的序列”才可以使用ThenBy，对于一般序列，不能直接使用ThenBy。
+	public static IOrderedEnumerable<TSource> ThenBy<TSource, TKey>(this IOrderedEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		IOrderedEnumerable<string> doubleOrder = StrCollection0.OrderBy(x => x.Length).ThenBy(x => x);
+			OrderBy: {"a", "d", "a", "bc", "abc", "pqr", "xyz", "defgh"}
+			ThenBy: {"a", "a", "d", "bc", "abc", "pqr", "xyz", "defgh"}
+	
+	ThenBy 还有一个重写IComparer的重载
+
+	ThenByDescending	类似于ThenBy，降序排列
+	public static IOrderedEnumerable<TSource> ThenByDescending<TSource, TKey>(this IOrderedEnumerable<TSource> source, Func<TSource, TKey> keySelector);
+		IOrderedEnumerable<string> doubleOrderDesc = StrCollection0.OrderBy(x => x.Length).ThenByDescending(x => x);
+			{"d", "a", "a", "bc", "xyz", "pqr", "abc", "defgh"}
+
+	ThenByDescending 还有一个重写IComparer的重载
+		
+18. 跳过/保留(Line 571-599)
+	Skip	跳过序列中的前若干个元素，返回序列剩余的部分。注1：接收的参数是跳过的元素的个数，而非其序列号。注2：即使跳过的元素个数超过序列的个数，也不会抛出异常，仅仅是返回一个空的序列。
+	public static IEnumerable<TSource> Skip<TSource>(this IEnumerable<TSource> source, int count);
+		IEnumerable<string> skip2List = StrCollection1.Skip(2);
+			跳过序列的前两个元素
+			{"3"}（原序列中"1"和"2"两个元素被跳过）
+
+	Take	保留序列的前若干个元素。注1：接收的参数是保留的元素的个数，而非其序列号。注2：即使保留的元素个数超过序列的个数，也不会抛出异常，能取多少个取多少个。
+	public static IEnumerable<TSource> Take<TSource>(this IEnumerable<TSource> source, int count);
+		IEnumerable<string> take2List = StrCollection1.Take(2);
+			保留序列里的前两个元素
+			{"1", "2"}
+
+	SkipWhile	当元素满足某一条件的时候始终跳过，直到该条件不满足为止，也就是跳过序列前端所有满足条件的元素
+	public static IEnumerable<TSource> SkipWhile<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		IEnumerable<string> skipWhileShorterThan4List = StrCollection0.SkipWhile(x => x.Length < 4);
+			当字符串长度小于4的时候始终跳过，直到某个长度不小于4的元素开始，保留所有的元素。
+			{"defgh", "pqr", "xyz"}
+
+	SkipWhile	当元素及其序列号满足某一条件的时候始终跳过，直到该条件不满足为止，与前一函数相比，区别在于元素的序列号也一并列入是否满足条件的考虑
+	public static IEnumerable<TSource> SkipWhile<TSource>(this IEnumerable<TSource> source, Func<TSource, int, bool> predicate);		
+		IEnumerable<string> skipWhileShorterThan4AndIndexLessThan3List = StrCollection0.SkipWhile((x, y) => x.Length < 4 && y < 3);
+			当字符串的长度小于4，并且序列号不超过3的时候始终跳过
+			从"abc"（序列号为3）开始，即不满足Skip的条件。
+			{ "abc", "a", "defgh", "pqr", "xyz" }
+
+	TakeWhile	当元素满足某一条件的时候始终保留，直到该条件不满足为止，也就是保留序列前端所有满足条件的元素
+	public static IEnumerable<TSource> TakeWhile<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> predicate);
+		IEnumerable<string> takeWhileShorterThan4List = StrCollection0.TakeWhile(x => x.Length < 4);
+			当字符串长度小于4的时候始终保留，直到某个长度不小于4的元素。
+			{ "a", "bc", "d", "abc", "a" }
+
+	TakeWhile 还有一个考虑元素序列号的重载，类似于SkipWhile
+
+19. 其他(Line 601-618)
+	OfType	选取序列中某一类型的所有元素
+	public static IEnumerable<TResult> OfType<TResult>(this IEnumerable source);
+		IEnumerable<DerivedClass> derivedInBaseList = DerivedCollection.OfType<DerivedClass>();
+			选取基类序列里所有继承类的元素
+			{ DerivedClass with Value=2, DerivedClass with Value=3}
+	
+	Reverse	反转
+	public static IEnumerable<TSource> Reverse<TSource>(this IEnumerable<TSource> source);
+		IEnumerable<string> reversedList = StrCollection1.Reverse();
+			返回序列的反序
+			{"3", "2", "1"}
+
+	AsEnumerable	转换为默认序列
+	public static IEnumerable<TSource> AsEnumerable<TSource>(this IEnumerable<TSource> source);
+		IEnumerable<string> userDefineWhere = UserDefineCollection.Where(x => x == "a");
+			UserDefineCollection是用户自定义的类型，继承了List，重写了Where函数，调用Where的时候会在屏幕上显示"The is user define Where()."。
+		IEnumerable<string> defaultWhere = UserDefineCollection.AsEnumerable().Where(x => x == "a");
+			将UserDefineCollection转化为默认的序列，在调用Where的时候会调用默认的Where函数，在屏幕上不会显示任何内容。
+
+实际应用：
+	某个文本文件，有若干行，每一行均以tab（\t）分隔，其中最后一列是我们需要的文本，文本以空格分隔所有的单词，我们需要统计该文本当中各个单词出现的次数，由高到低，输出为"单词\t词频"。
+	使用Linq语句：	
+		var list = File.ReadLines(inputFilePath)		//读取所有行
+			.Select(x => x.Split('\t').Last())		//用tab分割取最后一列
+			.Select(x => x.Split(' '))		//对于每一列用空格分割
+			.SelectMany(x => x)		//转化为单词的序列
+			.GroupBy(x => x)		//用单词自身分组
+			.OrderByDescending(x => x.Count())		//用组的元素数量降序排列
+			.Select(x => x.Key + "\t" + x.Count());		//返回每一组的Key（也就是单词自身）和该组元素的数量
+		File.WriteAllLines(outputFilePath, list);		//将结果输出
+	在前文的讲解中，每一个语句我都写明了返回类型，在实际应用中，很多时候是不必要的，因为正如Linq定义的复杂性一样，它的返回值往往也是千奇百怪，我们在思路清晰的时候，只需要了解这些返回类型是什么样的结构，下一步应该如何调用即可，不必把类型显式地写出，只要用var即可。
+
+若干说明：	
+	Linq的优势
+		代码非常简洁，上文实例中的功能，如果不使用Linq的话，代码量至少翻倍，并且会声明很多额外的中间变量。
+		很多Linq的基础功能速度远快于我们自己写的方法，这在集合运算（Intersect, Union, Except）当中尤其明显。
+	Linq的劣势
+		前文提到过，实现IEnumerable仅仅需要实现如何遍历所有成员，而Linq处理的几乎全部是IEnumerable类型的数据，因此，可以肯定的是，Linq是通过遍历所有（或者部分）序列元素来实现的各种功能。有些时候，这样是必要的或者是值得的，但有些时候是不值得的。比如最典型的ElementAt(int i)和这个函数，如果序列元素的数量很大，或者需要反复调用的时候，使用ElementAt的效率就会非常低下。建议采用数组的方式（如果没有空间限制）进行调用。
+		Linq的简洁一体两面，由于Linq可以在一个语句中包含很多个Linq函数（如实例），而当出现异常或者错误的时候，VS的Debug功能往往不能给出具体的原因（因为Debug通常不能检测出一个语句内的问题）。所以需要在适当的地方引入适当的中间变量便于Debug。
+	总结
+		Linq的使用门槛相对高一些（需要了解泛型，代理，Lambda表达式等），但功能非常强大，能够非常高效，简洁地处理很多序列的操作。不过在使用的时候，请不要滥用。
