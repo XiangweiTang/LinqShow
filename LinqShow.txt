@@ -1,4 +1,4 @@
-Linq，也即Language Integrated Query，是.NetFramework 3.5发布的一个特性。该特性主要应用于处理数组，链表，字典，字符串，Xml文件(Linq to Xml)，数据库(Linq to Sql)等等有序数据结构，而一些第三方插件如NewtonSoft的Json.Net也有Json.Linq。熟练掌握Linq可以有效地处理这样的数据类型。下面就来全面地介绍一下Linq。
+Linq(C#)，也即Language Integrated Query，是微软于.NetFramework 3.5发布的一个特性。该特性主要应用于处理数组，链表，字典，字符串，Xml文件(Linq to Xml)，数据库(Linq to Sql)等等有序数据结构，而一些第三方插件如NewtonSoft的Json.Net也有Json.Linq。熟练掌握Linq可以有效地处理这样的数据类型。下面就来全面地介绍一下Linq。
 本文以及所有的代码都可以在这个链接当中找到：https://github.com/XiangweiTang/LinqShow 
 
 预备知识：
@@ -76,7 +76,6 @@ Linq，也即Language Integrated Query，是.NetFramework 3.5发布的一个特�
 				resultSelector接收一个TAccumulate类型的变量，返回一个TResult类型的数值。
 				也就是说，用户在第三个参数里，需要写出一个接收一种数据类型，并返回另外一个类型的数据的函数。	
 	
-
 0. 变量声明(Line 13-125)
 	static IEnumerable<string> StrCollection0 = new List<string> { "a", "bc", "d", "abc", "a", "defgh", "pqr", "xyz" };
 	static IEnumerable<string> StrCollection1 = new List<string> { "1", "2", "3" };
@@ -191,6 +190,8 @@ Linq，也即Language Integrated Query，是.NetFramework 3.5发布的一个特�
 			return Enumerable.Where(this, predicate);
 		}
 	}
+
+下面来根据一些具体的例子来说明各个Linq函数的用法，这些函数都位于Program.cs中。下面的各个分类都是经验性的分法，并非官方分类。
 
 1. 生成(line 150-163)
 	Empty	创建一个新的空IEnumerable
